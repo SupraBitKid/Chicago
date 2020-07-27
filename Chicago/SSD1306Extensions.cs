@@ -1,12 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using ByteUtility;
 
 namespace Meadow.Foundation.Displays {
-	public static class SSD1306Extensions {
+	public static class Ssd1306Extensions {
+
+		public enum BitmapOp {
+			Or = 0,
+			And = 1,
+			Xor = 2,
+			Replace = 3,
+		}
 
 		private static readonly byte[] UGdash2832HSWEG02SetupSequence = new byte[] {
 			0xAE,		// display off
@@ -26,14 +34,15 @@ namespace Meadow.Foundation.Displays {
 			0xAF,		// Set Display On
 		};
 
-		public static void SendUGdash2832HSWEG02Startup( this SSD1306 display ) {
+		public static void SendUGdash2832HSWEG02Startup( this Ssd1306 display ) {
 			display.SendCommandsInternal( UGdash2832HSWEG02SetupSequence );
 		}
 
-		public static byte GetPageCount( this SSD1306 display ) {
+		public static byte GetPageCount( this Ssd1306 display ) {
 			return ( byte )( display.Height / 8 );
 		}
-		public static void DrawBitmap( this SSD1306 display, byte startColumn, byte startPage, VerticalByteBitmap bitmap ) {
+
+		public static void DrawBitmap( this Ssd1306 display, byte startColumn, byte startPage, VerticalByteBitmap bitmap, BitmapOp bitmapOp ) {
 
 			var buffer = GetBuffer( display );
 
@@ -53,40 +62,73 @@ namespace Meadow.Foundation.Displays {
 						var offset = xIndex + startColumn + ( ( yPage + startPage ) * pageWidth );
 
 						if( offset < buffer.Length )
-							buffer[ offset ] |= singlePage[ xIndex ];
+							switch( bitmapOp ) {
+								case BitmapOp.And:
+									buffer[ offset ] &= singlePage[ xIndex ];
+									break;
+								case BitmapOp.Or:
+									buffer[ offset ] |= singlePage[ xIndex ];
+									break;
+								case BitmapOp.Replace:
+									buffer[ offset ] = singlePage[ xIndex ];
+									break;
+								case BitmapOp.Xor:
+									buffer[ offset ] ^= singlePage[ xIndex ];
+									break;
+							}
 					}
 				}
 			}
 		}
 
-		internal static byte[] GetBuffer( SSD1306 display ) {
-			var properties = typeof( SSD1306 ).GetFields( System.Reflection.BindingFlags.Instance
-							   | System.Reflection.BindingFlags.GetProperty
-							   | System.Reflection.BindingFlags.SetProperty
-							   | System.Reflection.BindingFlags.NonPublic );
+		static FieldInfo BufferFieldInfo = null;
 
-			for( int index = 0; index < properties.Length; index++ ) {
-				if( properties[ index ].Name.Contains( "buffer" ) )
-					return properties[ index ].GetValue( display ) as byte[];
+		internal static byte[] GetBuffer( Ssd1306 display ) {
+			if( BufferFieldInfo == null ) {
+				var properties = typeof( Ssd1306 ).GetFields( System.Reflection.BindingFlags.Instance
+								   | System.Reflection.BindingFlags.GetProperty
+								   | System.Reflection.BindingFlags.SetProperty
+								   | System.Reflection.BindingFlags.NonPublic );
+
+				for( int index = 0; index < properties.Length; index++ ) {
+					if( properties[ index ].Name.Contains( "buffer" ) )
+						BufferFieldInfo = properties[ index ];
+				}
 			}
+		
+			if( BufferFieldInfo == null )
+				return null;
 
-			return null;
+			return BufferFieldInfo.GetValue( display ) as byte[];
 		}
 
-		internal static void SendCommandInternal( this SSD1306 display, byte command ) {
-			var method = typeof( SSD1306 ).GetMethod( "SendCommand", System.Reflection.BindingFlags.Instance
+		static MethodInfo SendCommandMethodInfo = null;
+
+		internal static void SendCommandInternal( this Ssd1306 display, byte command ) {
+			if( SendCommandMethodInfo == null )
+				SendCommandMethodInfo = typeof( Ssd1306 ).GetMethod( "SendCommand", System.Reflection.BindingFlags.Instance
+					   | System.Reflection.BindingFlags.InvokeMethod
+					   | System.Reflection.BindingFlags.NonPublic );
+			
+			if( SendCommandMethodInfo == null )
+				throw new EntryPointNotFoundException( "method SendCommand not found on " + nameof( Ssd1306 ) );
+
+			SendCommandMethodInfo.Invoke( display, new object[] { command } );
+			
+		}
+
+		static MethodInfo SendCommandsMethodInfo = null;
+
+		internal static void SendCommandsInternal( this Ssd1306 display, byte[] commands ) {
+			if( SendCommandsMethodInfo == null )
+				SendCommandsMethodInfo =  typeof( Ssd1306 ).GetMethod( "SendCommands", System.Reflection.BindingFlags.Instance
 				   | System.Reflection.BindingFlags.InvokeMethod
 				   | System.Reflection.BindingFlags.NonPublic );
 
-			method.Invoke( display, new object[] { command } );
-		}
+			if( SendCommandsMethodInfo == null )
+				throw new EntryPointNotFoundException( "method SendCommands not found on " + nameof( Ssd1306 ) );
 
-		internal static void SendCommandsInternal( this SSD1306 display, byte[] commands ) {
-			var method = typeof( SSD1306 ).GetMethod( "SendCommands", System.Reflection.BindingFlags.Instance
-				   | System.Reflection.BindingFlags.InvokeMethod
-				   | System.Reflection.BindingFlags.NonPublic );
-
-			method.Invoke( display, new object[] { commands } );
+			SendCommandsMethodInfo.Invoke( display, new object[] { commands } );
 		}
 	}
 }

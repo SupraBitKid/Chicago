@@ -6,13 +6,15 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="GraphicsLibraryExtension.cs" />
+    <Compile Remove="I2cBusExtensions.cs" />
     <Compile Remove="ProportionalFontDisplay.cs" />
     <Compile Remove="PWMMultiplex.cs" />
+    <Compile Remove="SSD1306.Bitmap.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Meadow" Version="0.10.0" />
-    <PackageReference Include="Meadow.Foundation" Version="0.12.0" />
-    <PackageReference Include="Meadow.Foundation.Displays.SSD1306" Version="0.11.0" />
+    <PackageReference Include="Meadow" Version="0.15.0" />
+    <PackageReference Include="Meadow.Foundation" Version="0.17.0" />
+    <PackageReference Include="Meadow.Foundation.Displays.SSD1306" Version="0.12.7" />
     <PackageReference Include="Meadow.Sdk" Version="1.1.0" />
   </ItemGroup>
 </Project>

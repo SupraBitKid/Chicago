@@ -4,22 +4,36 @@ using System.Threading;
 using Meadow;
 using Meadow.Devices;
 using Meadow.Foundation.Displays;
-using Meadow.Foundation.Sensors.Buttons;
+
 using Meadow.Hardware;
-using Meadow.Gateway.WiFi;
+
 using FontUtility;
 using ByteUtility;
+
+
+/// <summary>
+/// This example program was created to demonstrate showing perportional fonts with kerning
+/// on a Wilderness Labs Meadow board.
+/// Some extentions to Sdd1306 were required to achieve good performance.
+/// July 27th 2020
+/// SupraBitKid aka Kai Bidstrup
+/// 
+/// Future work:
+///  make VerticalByteBitmap into a generic class that can handle any byte orientation
+///  hide VerticalByteBitmap and VerticalByteRectangle functionality in some kind of graphics context
+///  work with Ssd1306 developer to expose bitmap through blting in addition to SetPixel
+/// </summary>
 
 namespace ChicagoApp {
 	public class MeadowApp : App<F7Micro, MeadowApp> {
 		const float pwmFrequency = 400000.0f;
-		const uint i2cFrequency = 400000;
+		const int i2cFrequency = 400000;
 
 		IPwmPort redPwm;
 		IPwmPort bluPwm;
 		IPwmPort grePwm;
 		int delayInMilliseconds = 0;
-		SSD1306 display;
+		Ssd1306 display;
 		ProportionalFontBase chicagoFont;
 		ProportionalFontBase cornerFont;
 		VerticalByteBitmap line1;
@@ -31,10 +45,14 @@ namespace ChicagoApp {
 		VerticalByteBitmap bottomLeftCorner;
 		VerticalByteBitmap bottomRightCorner;
 
+		VerticalByteBitmap redColorText;
+		VerticalByteBitmap blueColorText;
+		VerticalByteBitmap greenColorText;
+
 		public MeadowApp() {
 			this.ConfigurePorts();
 			this.BlinkLeds();
-			while( true ) ;
+			Thread.Sleep( -1 );
 		}
 
 		public void ConfigurePorts() {
@@ -45,11 +63,11 @@ namespace ChicagoApp {
 
 			var busForDisplay = Device.CreateI2cBus( ) as I2cBus;
 
-			busForDisplay.SetFrequency( i2cFrequency );
+			busForDisplay.Frequency = i2cFrequency;
 
 			Console.WriteLine( "I2C bus frequency: {0}", busForDisplay.Frequency );
 
-			this.display = new SSD1306( busForDisplay, 0x3C, SSD1306.DisplayType.OLED128x32 );
+			this.display = new Ssd1306( busForDisplay, 0x3C, Ssd1306.DisplayType.OLED128x32 );
 			this.display.SendUGdash2832HSWEG02Startup();
 			this.display.InvertDisplay = true;
 			this.display.Clear( true );
@@ -57,36 +75,56 @@ namespace ChicagoApp {
 			this.chicagoFont = new ShikaakwaProportionalFont();
 			this.cornerFont = new CornerProportionalFont();
 
-			var yPosition = 1;
+			var yPosition = 3;
 			this.line1 = this.chicagoFont.GetBitmapFromString( "Programmed in C#" ).ShiftLsbToMsb( yPosition );
 			this.line1Page = 0;
 			yPosition += this.chicagoFont.Spacing;
-			this.line2 = this.chicagoFont.GetBitmapFromString( "by SupraBitKid" ).ShiftLsbToMsb( yPosition % 8 );
+			var shiftLineTwo = yPosition % 8;
+			this.line2 = this.chicagoFont.GetBitmapFromString( "by SupraBitKid" ).ShiftLsbToMsb( shiftLineTwo );
 			this.line2Page = ( byte )( yPosition / 8 );
 
 			this.topLeftCorner = this.cornerFont.GetCharacter( 'a' );
 			this.topRightCorner = this.cornerFont.GetCharacter( 'b' );
 			this.bottomLeftCorner = this.cornerFont.GetCharacter( 'c' );
 			this.bottomRightCorner = this.cornerFont.GetCharacter( 'd' );
+
+			this.redColorText = this.chicagoFont.GetBitmapFromString( "red" ).ShiftLsbToMsb( shiftLineTwo );
+			this.greenColorText = this.chicagoFont.GetBitmapFromString( "green" ).ShiftLsbToMsb( shiftLineTwo );
+			this.blueColorText = this.chicagoFont.GetBitmapFromString( "blue" ).ShiftLsbToMsb( shiftLineTwo );
+
+			this.display.Clear( false );
+			this.display.DrawBitmap( 0, 0, this.topLeftCorner, Ssd1306Extensions.BitmapOp.Or );
+			this.display.DrawBitmap( ( byte )( this.display.Width - this.topRightCorner.Width ), 0, this.topRightCorner, Ssd1306Extensions.BitmapOp.Or );
+			this.display.DrawBitmap( 0, ( byte )( this.display.GetPageCount() - 1 ), this.bottomLeftCorner, Ssd1306Extensions.BitmapOp.Or );
+			this.display.DrawBitmap( ( byte )( this.display.Width - this.bottomRightCorner.Width ),
+									( byte )( this.display.GetPageCount() - 1 ), this.bottomRightCorner, Ssd1306Extensions.BitmapOp.Or );
+			this.display.DrawBitmap( 6, this.line1Page, this.line1, Ssd1306Extensions.BitmapOp.Or );
+			this.display.DrawBitmap( 6, this.line2Page, this.line2, Ssd1306Extensions.BitmapOp.Or );
+			this.display.Show();
+
 		}
 
 		public void BlinkLeds() {
 
 			while( true ) {
-				this.display.Clear( false );
-				this.display.DrawBitmap( 0, 0, this.topLeftCorner );
-				this.display.DrawBitmap( ( byte )( this.display.Width - this.topRightCorner.Width ), 0, this.topRightCorner );
-				this.display.DrawBitmap( 0, ( byte )( this.display.GetPageCount() - 1 ), this.bottomLeftCorner );
-				this.display.DrawBitmap( ( byte )( this.display.Width - this.bottomRightCorner.Width ),
-										( byte )( this.display.GetPageCount() - 1 ), this.bottomRightCorner );
-				this.display.DrawBitmap( 6, this.line1Page, this.line1 );
-				this.display.DrawBitmap( 6, this.line2Page, this.line2 );
-				this.display.Show();
+				this.XorDisplayColorText( this.redColorText );
+				this.RampUpDown( this.redPwm, 3000, 2 );
+				this.XorDisplayColorText( this.redColorText );
 
-				this.RampUpDown( this.redPwm, 3000, 1 );
-				this.RampUpDown( this.grePwm, 3000, 1 );
-				this.RampUpDown( this.bluPwm, 3000, 1 );
+				this.XorDisplayColorText( this.greenColorText );
+				this.RampUpDown( this.grePwm, 3000, 2 );
+				this.XorDisplayColorText( this.greenColorText );
+
+				this.XorDisplayColorText( this.blueColorText );
+				this.RampUpDown( this.bluPwm, 3000, 2 );
+				this.XorDisplayColorText( this.blueColorText );
+
 			}
+		}
+
+		public void XorDisplayColorText( VerticalByteBitmap colorNameText ) {
+			this.display.DrawBitmap( ( byte )( this.display.Width - colorNameText.Width - 1 ), this.line2Page, colorNameText, Ssd1306Extensions.BitmapOp.Xor );
+			this.display.Show();
 		}
 
 		public void RampUpDown( IPwmPort port, int totalDurationInMs, int count ) {
@@ -114,14 +152,10 @@ namespace ChicagoApp {
 			stopwatch.Stop();
 			var totalTime = ( int )stopwatch.ElapsedMilliseconds;
 
-			//Console.WriteLine( "actual elapsed: {0}", totalTime );
-
 			var diff = totalTime - totalDurationInMs;
 			var factor = diff / iterations;
 
 			this.delayInMilliseconds += factor;
-			
-			//Console.WriteLine( "delayInMilliseconds: {0}", this.delayInMilliseconds );
 
 			pwmPort.Stop();
 		}
